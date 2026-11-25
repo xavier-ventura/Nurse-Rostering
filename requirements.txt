@@ -1,0 +1,6 @@
+ortools
+pandas
+numpy
+matplotlib
+scipy
+ipykernel
