@@ -1,0 +1,26 @@
+# Entornos virtuales y variables locales
+.venv/
+venv/
+.env
+
+# Python y Jupyter Notebooks
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# LaTeX (archivos temporales y carpeta build)
+report/build/
+*.aux
+*.log
+*.out
+*.toc
+*.bbl
+*.blg
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+
+# Sistema operativo / IDE
+.DS_Store
+Thumbs.db
+.vscode/

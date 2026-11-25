@@ -1,0 +1,179 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Paquetes ----------
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[a4paper,margin=2.3cm]{geometry}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{booktabs,array,tabularx}
+\usepackage{enumitem}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=NavyBlue,urlcolor=NavyBlue,hypertexnames=false}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.55em}
+\renewcommand{\arraystretch}{1.25}
+
+% ---------- Macros de notación ----------
+\newcommand{\Amin}{\underline{A}}   \newcommand{\Amax}{\overline{A}}
+\newcommand{\Cmin}{\underline{C}}   \newcommand{\Cmax}{\overline{C}}
+\newcommand{\Fmin}{\underline{F}}   \newcommand{\Fmax}{\overline{F}}
+\newcommand{\sat}{\mathrm{sat}}     \newcommand{\sun}{\mathrm{sun}}
+\newcommand{\forallidx}[1]{\qquad \forall\, #1}
+
+% Cabecera de restricción: nombre en negrita + descripción
+\newcommand{\constraint}[2]{\paragraph{#1}\mbox{}\\[-0.4em] #2}
+
+\begin{document}
+
+\section{MILP Model}
+
+\subsection{Sets and constants}
+
+\begin{tabularx}{\textwidth}{@{}>{$}l<{$} X@{}}
+\toprule
+\textbf{Symbol} & \textbf{Description}\\
+\midrule
+N                  & Set of nurses.\\
+D=\{0,\dots,|D|-1\} & Set of days of the planning horizon.\\
+S                  & Set of shifts.\\
+K                  & Set of skills.\\
+P=\{0,\dots,\lfloor |D|/7\rfloor-1\} & Set of weekends; weekend $p$ is formed by Saturday $\sat_p=7p+5$ and Sunday $\sun_p=7p+6$.\\
+\midrule
+r_{sd}\in\mathbb{Z}_{\ge 0} & Preferred number of nurses for shift $s$ on day $d$.\\
+a_{ns}\in\{0,1\}    & 1 if nurse $n$ owns the skill required by shift $s$.\\
+\Amin_n,\ \Amax_n   & Minimum / maximum number of assignments of nurse $n$.\\
+\Cmin_n,\ \Cmax_n   & Minimum / maximum number of consecutive working days of nurse $n$.\\
+\Fmin_n,\ \Fmax_n   & Minimum / maximum number of consecutive free days of nurse $n$.\\
+cw_n,\ ss_n\in\{0,1\} & Nurse $n$ wants complete weekends / the same shift on both weekend days.\\
+\Pi_n               & Unwanted patterns of nurse $n$; $\pi=(\pi_1,\dots,\pi_{L_\pi})$ is a sequence of shifts on consecutive days.\\
+O_n\subseteq D      & Days off requested by nurse $n$.\\
+R_n\subseteq D\times S & (Day, shift) pairs that nurse $n$ asked to avoid.\\
+\bottomrule
+\end{tabularx}
+
+\subsection{Decision variables}
+
+\begin{tabularx}{\textwidth}{@{}>{$}l<{$} >{$}l<{$} X@{}}
+\toprule
+\textbf{Variable} & \textbf{Domain} & \textbf{Description}\\
+\midrule
+x_{nds}      & \{0,1\}  & 1 if nurse $n$ is assigned to shift $s$ on day $d$.\\
+w_{nd}       & \{0,1\}  & 1 if nurse $n$ works on day $d$.\\
+\midrule
+o_{sd},\,u_{sd}               & \mathbb{R}_{\ge 0} & Overstaffing / understaffing of shift $s$ on day $d$.\\
+\alpha^+_n,\,\alpha^-_n       & \mathbb{R}_{\ge 0} & Assignments above $\Amax_n$ / below $\Amin_n$.\\
+e_{nd}                        & \mathbb{R}_{\ge 0} & Excess in the window of $\Cmax_n+1$ days starting at $d$ (too many consecutive working days).\\
+m_{ndl}                       & \mathbb{R}_{\ge 0} & 1 if a working run of exactly $l<\Cmin_n$ days starts at $d$.\\
+g_{nd}                        & \mathbb{R}_{\ge 0} & Excess in the window of $\Fmax_n+1$ days starting at $d$ (too many consecutive free days).\\
+h_{ndl}                       & \mathbb{R}_{\ge 0} & 1 if a free run of exactly $l<\Fmin_n$ days starts at $d$.\\
+c_{np}                        & \mathbb{R}_{\ge 0} & 1 if weekend $p$ of nurse $n$ is incomplete.\\
+t_{np}                        & \mathbb{R}_{\ge 0} & 1 if nurse $n$ works different shifts on Saturday and Sunday of weekend $p$.\\
+q_{nd\pi}                     & \mathbb{R}_{\ge 0} & 1 if unwanted pattern $\pi$ occurs for nurse $n$ starting at day $d$.\\
+\bottomrule
+\end{tabularx}
+
+\subsection{Hard constraints}
+
+\constraint{(H1) Link.}{Defines $w_{nd}$ and guarantees at most one shift per nurse and day.}
+\begin{equation}\tag{H1}\label{c:link}
+\sum_{s\in S} x_{nds}=w_{nd}\forallidx{n\in N,\ d\in D}
+\end{equation}
+
+\constraint{(H2) Skill.}{A nurse cannot be assigned to a shift whose skill she does not own.}
+\begin{equation}\tag{H2}\label{c:skill}
+x_{nds}=0\forallidx{n\in N,\ d\in D,\ s\in S:\ a_{ns}=0}
+\end{equation}
+
+\constraint{(H3) Cover.}{Every shift is covered by at least one nurse each day (feasibility of the roster).}
+\begin{equation}\tag{H3}\label{c:cover}
+\sum_{n\in N} x_{nds}\ge 1\forallidx{d\in D,\ s\in S}
+\end{equation}
+
+\subsection{Soft constraints (definition of deviations)}
+
+\constraint{(S1) Demand.}{Measures the deviation from the preferred number of nurses.}
+\begin{equation}\tag{S1}\label{c:dem}
+\sum_{n\in N} x_{nds}-r_{sd}=o_{sd}-u_{sd}\forallidx{d\in D,\ s\in S}
+\end{equation}
+
+\constraint{(S2) Assignments.}{Measures the deviation from the contractual number of assignments.}
+\begin{equation}\tag{S2}\label{c:asg}
+\sum_{d\in D} w_{nd}-\Amax_n\le \alpha^+_n,\qquad
+\Amin_n-\sum_{d\in D} w_{nd}\le \alpha^-_n
+\forallidx{n\in N}
+\end{equation}
+
+\constraint{(S3) Maximum consecutive working days.}{Each window of $\Cmax_n+1$ days fully inside a working run adds exactly 1, so a run of length $L>\Cmax_n$ costs $L-\Cmax_n$.}
+\begin{equation}\tag{S3}\label{c:maxw}
+\sum_{j=0}^{\Cmax_n} w_{n,d+j}-\Cmax_n\le e_{nd}
+\forallidx{n\in N,\ d=0,\dots,|D|-\Cmax_n-1}
+\end{equation}
+
+\constraint{(S4) Minimum consecutive working days.}{Detects a working run of $l<\Cmin_n$ days delimited by free days on both sides (interior runs only); its cost is $\Cmin_n-l$.}
+\begin{equation}\tag{S4}\label{c:minw}
+\sum_{j=0}^{l-1} w_{n,d+j}-w_{n,d-1}-w_{n,d+l}-(l-1)\le m_{ndl}
+\end{equation}
+\[\forall\, n\in N,\ \ l=1,\dots,\Cmin_n-1,\ \ d=1,\dots,|D|-l-1\]
+
+\constraint{(S5) Maximum consecutive free days.}{Each window of $\Fmax_n+1$ days without any assignment adds exactly 1, so a free run of length $L>\Fmax_n$ costs $L-\Fmax_n$.}
+\begin{equation}\tag{S5}\label{c:maxf}
+\sum_{j=0}^{\Fmax_n} w_{n,d+j}+g_{nd}\ge 1
+\forallidx{n\in N,\ d=0,\dots,|D|-\Fmax_n-1}
+\end{equation}
+
+\constraint{(S6) Minimum consecutive free days.}{Detects a free run of $l<\Fmin_n$ days delimited by working days on both sides; its cost is $\Fmin_n-l$.}
+\begin{equation}\tag{S6}\label{c:minf}
+w_{n,d-1}+w_{n,d+l}-\sum_{j=0}^{l-1} w_{n,d+j}-1\le h_{ndl}
+\end{equation}
+\[\forall\, n\in N,\ \ l=1,\dots,\Fmin_n-1,\ \ d=1,\dots,|D|-l-1\]
+
+\constraint{(S7) Complete weekends.}{Penalizes weekends in which only one of the two days is worked.}
+\begin{equation}\tag{S7}\label{c:cwe}
+\begin{aligned}
+w_{n,\sat_p}-w_{n,\sun_p}&\le c_{np}\\
+w_{n,\sun_p}-w_{n,\sat_p}&\le c_{np}
+\end{aligned}
+\forallidx{n\in N:\ cw_n=1,\ p\in P}
+\end{equation}
+
+\constraint{(S8) Same shift on the weekend.}{Penalizes weekends in which different shifts are worked on Saturday and Sunday.}
+\begin{equation}\tag{S8}\label{c:sse}
+x_{n,\sat_p,s}+\sum_{s'\in S\setminus\{s\}} x_{n,\sun_p,s'}-1\le t_{np}
+\forallidx{n\in N:\ ss_n=1,\ p\in P,\ s\in S}
+\end{equation}
+
+\constraint{(S9) Unwanted patterns.}{Counts each occurrence of an unwanted sequence of shifts.}
+\begin{equation}\tag{S9}\label{c:pat}
+\sum_{i=1}^{L_\pi} x_{n,d+i-1,\pi_i}-(L_\pi-1)\le q_{nd\pi}
+\end{equation}
+\[\forall\, n\in N,\ \ \pi\in\Pi_n,\ \ d=0,\dots,|D|-L_\pi\]
+
+\subsection{Objective function}
+
+The objective minimizes the total deviation from the ideal schedule, with unit weight per deviation, as in the problem statement: $Z=Z_{\mathrm{dem}}+Z_{\mathrm{asg}}+Z_{\mathrm{run}}+Z_{\mathrm{we}}+Z_{\mathrm{pat}}+Z_{\mathrm{req}}$.
+
+\begin{equation}\tag{OBJ}
+\min\ Z=Z_{\mathrm{dem}}+Z_{\mathrm{asg}}+Z_{\mathrm{run}}+Z_{\mathrm{we}}+Z_{\mathrm{pat}}+Z_{\mathrm{req}}
+\end{equation}
+
+\begin{align*}
+Z_{\mathrm{dem}} &= \sum_{d\in D}\sum_{s\in S}(o_{sd}+u_{sd})
+&&\text{staffing deviation}\\
+Z_{\mathrm{asg}} &= \sum_{n\in N}(\alpha^+_n+\alpha^-_n)
+&&\text{contractual assignments}\\
+Z_{\mathrm{run}} &= \sum_{n,d}\bigl(e_{nd}+g_{nd}\bigr)
+ +\sum_{n,d,l}(\Cmin_n-l)\,m_{ndl}
+ +\sum_{n,d,l}(\Fmin_n-l)\,h_{ndl}
+&&\text{working / free runs}\\
+Z_{\mathrm{we}} &= \sum_{n\in N}\sum_{p\in P}(c_{np}+t_{np})
+&&\text{weekend preferences}\\
+Z_{\mathrm{pat}} &= \sum_{n\in N}\sum_{\pi\in\Pi_n}\sum_{d}q_{nd\pi}
+&&\text{unwanted patterns}\\
+Z_{\mathrm{req}} &= \sum_{n\in N}\Bigl(\sum_{d\in O_n} w_{nd}+\sum_{(d,s)\in R_n} x_{nds}\Bigr)
+&&\text{days-off / shift-off requests}
+\end{align*}
+
+\end{document}
